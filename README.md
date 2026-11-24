@@ -107,3 +107,11 @@ Push a `v*` tag. The Release workflow builds with GoReleaser, signs the checksum
 with GPG (secrets `GPG_PRIVATE_KEY`, `PASSPHRASE`) and publishes a GitHub release
 the Terraform Registry picks up. `terraform-registry-manifest.json` declares
 protocol 6.0.
+
+## License
+
+Like [Shumoku](https://github.com/konoe-akitoshi/shumoku), this provider is free and
+open-source software, licensed under **AGPL-3.0** ([LICENSE](./LICENSE)).
+
+Commercial support is available separately; see Shumoku's
+[COMMERCIAL_SUPPORT.md](https://github.com/konoe-akitoshi/shumoku/blob/main/COMMERCIAL_SUPPORT.md).
