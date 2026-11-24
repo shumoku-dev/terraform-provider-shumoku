@@ -1,0 +1,73 @@
+name: Tests
+on:
+  pull_request:
+    paths-ignore:
+      - 'README.md'
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'README.md'
+permissions:
+  contents: read
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go mod download
+      - run: go build -v ./...
+      - run: make lint
+
+  generate:
+    name: Docs up to date
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - run: make generate
+      - name: git diff
+        run: |
+          git diff --compact-summary --exit-code || \
+            (echo; echo "Unexpected difference after 'make generate'. Run it and commit the result."; exit 1)
+
+  # Unit tests plus the mock-server provider tests, which drive the real
+  # terraform CLI against an in-memory imitation of the Shumoku Server API.
+  # The TF_ACC acceptance tests need a live server and are not run here.
+  test:
+    name: Terraform ${{ matrix.terraform }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        terraform:
+          - '1.5.*'
+          - '1.9.*'
+          - 'latest'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ matrix.terraform }}
+          terraform_wrapper: false
+      - run: go mod download
+      - run: go test -v -cover ./...
+        timeout-minutes: 10
