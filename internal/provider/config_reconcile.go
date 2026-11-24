@@ -103,3 +103,37 @@ func secretKeysFromConfigSchema(raw json.RawMessage) map[string]bool {
 	}
 	return keys
 }
+
+// carryOverSecrets returns planned with every secret key it lacks copied from
+// stored. Non-objects and unparsable input are returned unchanged.
+func carryOverSecrets(planned, stored string, secretKeys func() map[string]bool) string {
+	var p, s map[string]any
+	if json.Unmarshal([]byte(planned), &p) != nil || json.Unmarshal([]byte(stored), &s) != nil || p == nil {
+		return planned
+	}
+	var missing []string
+	for k := range s {
+		if _, ok := p[k]; !ok {
+			missing = append(missing, k)
+		}
+	}
+	if len(missing) == 0 || secretKeys == nil {
+		return planned
+	}
+	secrets := secretKeys()
+	changed := false
+	for _, k := range missing {
+		if secrets[k] {
+			p[k] = s[k]
+			changed = true
+		}
+	}
+	if !changed {
+		return planned
+	}
+	out, err := json.Marshal(p)
+	if err != nil {
+		return planned
+	}
+	return string(out)
+}

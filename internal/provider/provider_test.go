@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
@@ -76,6 +77,14 @@ resource "shumoku_topology_source" "zabbix" {
   topology_id    = shumoku_topology.core.id
   data_source_id = shumoku_data_source.zabbix.id
   purpose        = "topology"
+  options_json   = jsonencode({})
+}
+
+resource "shumoku_topology_source" "metrics_webhook" {
+  topology_id    = shumoku_topology.core.id
+  data_source_id = shumoku_data_source.zabbix.id
+  purpose        = "metrics"
+  sync_mode      = "webhook"
 }
 
 resource "shumoku_dashboard" "noc" {
@@ -140,6 +149,8 @@ resource "shumoku_credential" "snmp" {
 					resource.TestCheckResourceAttr("shumoku_topology_source.zabbix", "sync_mode", "manual"),
 					resource.TestCheckResourceAttr("shumoku_topology_source.zabbix", "node_contribution", "scoop"),
 					resource.TestCheckResourceAttr("shumoku_topology_source.zabbix", "webhook_secret", ""),
+					resource.TestCheckResourceAttr("shumoku_topology_source.zabbix", "options_json", "{}"),
+					resource.TestCheckResourceAttrWith("shumoku_topology_source.metrics_webhook", "webhook_secret", nonEmpty),
 					resource.TestCheckResourceAttrPair("data.shumoku_topology.by_name", "id", "shumoku_topology.core", "id"),
 					resource.TestCheckResourceAttr("data.shumoku_data_source_types.all", "types.#", "2"),
 					resource.TestCheckResourceAttr("shumoku_dashboard.noc", "layout_json",
@@ -259,8 +270,13 @@ output "webhook_secret" {
 			{
 				Config: cfg,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckOutput("webhook_secret", "generated-webhook-secret"),
+					resource.TestCheckOutput("webhook_secret", "generated-webhook-secret-1"),
 				),
+			},
+			{
+				// Updating the config must not make the server regenerate the webhook secret.
+				Config: strings.Replace(cfg, "https://grafana.example.com", "https://grafana2.example.com", 1),
+				Check:  resource.TestCheckOutput("webhook_secret", "generated-webhook-secret-1"),
 			},
 			{
 				// Someone edits the URL in the UI: Terraform must see it and put it back.
@@ -268,7 +284,7 @@ output "webhook_secret" {
 					m.mu.Lock()
 					defer m.mu.Unlock()
 					for _, ds := range m.dataSources {
-						ds["configJson"] = `{"url":"https://changed.example.com","useWebhook":true,"webhookSecret":"generated-webhook-secret"}`
+						ds["configJson"] = `{"url":"https://changed.example.com","useWebhook":true,"webhookSecret":"generated-webhook-secret-1"}`
 					}
 				},
 				Config:             cfg,
@@ -405,7 +421,7 @@ resource "shumoku_topology" "x" {
   name = "x"
 }
 `,
-				ExpectError: regexp.MustCompile(`(?s)Shumoku authentication failed.*Invalid or expired API\s+token`),
+				ExpectError: regexp.MustCompile(`(?s)Shumoku authentication failed.*did not accept the API\s+token`),
 			},
 		},
 	})

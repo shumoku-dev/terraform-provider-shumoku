@@ -72,7 +72,9 @@ func (r *dataSourceResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			"config_json": schema.StringAttribute{
 				MarkdownDescription: "Plugin configuration as a JSON object string (use `jsonencode`), validated by the " +
 					"server against the plugin's `configSchema`. Sensitive, since it usually holds API tokens or " +
-					"passwords. An update replaces the whole configuration.\n\n" +
+					"passwords. An update replaces the whole configuration, except that a secret field (per the plugin's " +
+					"`configSchema`) omitted here keeps its stored value, so server-generated secrets such as a Grafana " +
+					"`webhookSecret` survive updates; set a secret to `\"\"` to clear it.\n\n" +
 					"Drift is judged only on the keys set here: keys the server adds itself (such as a generated Grafana " +
 					"`webhookSecret`) are ignored, and secret fields the server returns empty or masked are treated as " +
 					"unchanged. Compared semantically, so key order and whitespace do not cause diffs.",
@@ -222,13 +224,21 @@ func (r *dataSourceResource) Update(ctx context.Context, req resource.UpdateRequ
 			"config_json must be a JSON object, e.g. jsonencode({ url = \"...\" }).")
 		return
 	}
+	// The config replaces the stored one, so secret keys the configuration omits
+	// are carried over from the stored config. Otherwise a value the server
+	// generated (a Grafana webhookSecret) would be regenerated on every update.
+	configJSON := plan.ConfigJSON.ValueString()
+	if !state.EffectiveConfigJSON.IsNull() && !state.EffectiveConfigJSON.IsUnknown() {
+		configJSON = carryOverSecrets(configJSON, state.EffectiveConfigJSON.ValueString(), func() map[string]bool {
+			return r.secretKeys(ctx, plan.Type.ValueString())
+		})
+	}
 	// PUT is partial on the server, but every managed field is sent: name, type,
-	// the full config (it replaces the stored one) and the polling override (an
-	// empty object clears it).
+	// the full config and the polling override (an empty object clears it).
 	ds, err := r.client.UpdateDataSource(ctx, state.ID.ValueString(), client.UpdateDataSourceRequest{
 		Name:       strPtr(plan.Name.ValueString()),
 		Type:       strPtr(plan.Type.ValueString()),
-		ConfigJSON: strPtr(plan.ConfigJSON.ValueString()),
+		ConfigJSON: strPtr(configJSON),
 		Polling:    pollingFromModel(&plan),
 	})
 	if err != nil {

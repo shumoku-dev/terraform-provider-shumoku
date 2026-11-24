@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"github.com/shumoku-dev/terraform-provider-shumoku/internal/client"
 )
@@ -131,6 +132,27 @@ func (p *ShumokuProvider) Configure(ctx context.Context, req provider.ConfigureR
 		resp.Diagnostics.AddAttributeError(path.Root("endpoint"), "Invalid Shumoku endpoint", err.Error())
 		return
 	}
+
+	// Check the token up front so a bad one fails once, clearly, instead of on every resource.
+	status, err := c.AuthStatus(ctx)
+	if err != nil {
+		addAPIError(&resp.Diagnostics, "check the API token against "+c.BaseURL()+"/auth/status", err)
+		return
+	}
+	if !status.SetupComplete {
+		resp.Diagnostics.AddError("Shumoku Server setup incomplete",
+			"The server at "+c.BaseURL()+" has no administrator yet. Finish its initial setup and issue an API token first.")
+		return
+	}
+	if !status.Authenticated {
+		resp.Diagnostics.AddAttributeError(path.Root("token"), "Shumoku authentication failed",
+			"The server at "+c.BaseURL()+" did not accept the API token: it may be invalid, expired or revoked. "+
+				"Check the token attribute or the "+envToken+" environment variable.")
+		return
+	}
+	tflog.Debug(ctx, "Authenticated to Shumoku Server", map[string]any{
+		"subject": status.Subject, "role": status.Role, "auth_method": status.AuthMethod,
+	})
 	resp.DataSourceData = c
 	resp.ResourceData = c
 }

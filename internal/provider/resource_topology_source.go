@@ -208,7 +208,17 @@ func (r *topologySourceResource) Create(ctx context.Context, req resource.Create
 		addAPIError(&resp.Diagnostics, "attach data source to topology "+topologyID, err)
 		return
 	}
-	plan.fromAPI(src)
+	// The server's POST response omits optionsJson and webhookSecret (it echoes
+	// the inputs it built the row from), so read the stored attachment back.
+	stored, err := r.client.GetTopologySource(ctx, topologyID, src.ID)
+	if err != nil {
+		addAPIError(&resp.Diagnostics, "read back topology source "+src.ID, err)
+		// Keep the attachment in state so it is not orphaned.
+		plan.fromAPI(src)
+		resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+		return
+	}
+	plan.fromAPI(stored)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 

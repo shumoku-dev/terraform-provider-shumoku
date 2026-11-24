@@ -36,3 +36,17 @@ func TestSecretKeysFromConfigSchema(t *testing.T) {
 		t.Error("nil schema should yield no keys")
 	}
 }
+
+func TestCarryOverSecrets(t *testing.T) {
+	secrets := func() map[string]bool { return map[string]bool{"webhookSecret": true, "token": true} }
+	got := carryOverSecrets(`{"url":"v","useWebhook":true}`, `{"url":"u","useWebhook":true,"webhookSecret":"w","other":1}`, secrets)
+	if got != `{"url":"v","useWebhook":true,"webhookSecret":"w"}` {
+		t.Errorf("got %s", got)
+	}
+	if got := carryOverSecrets(`{"token":""}`, `{"token":"t"}`, secrets); got != `{"token":""}` {
+		t.Errorf("an explicit empty secret must be sent: %s", got)
+	}
+	if got := carryOverSecrets(`{"a":1}`, `{"a":2}`, secrets); got != `{"a":1}` {
+		t.Errorf("unchanged expected: %s", got)
+	}
+}

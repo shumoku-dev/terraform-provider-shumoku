@@ -10,10 +10,6 @@ import (
 	"github.com/shumoku-dev/terraform-provider-shumoku/internal/provider"
 )
 
-// Run "go generate" to format example files and regenerate the docs.
-//go:generate terraform fmt -recursive ./examples/
-//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate --provider-name shumoku
-
 // version is set by goreleaser.
 var version = "dev"
 

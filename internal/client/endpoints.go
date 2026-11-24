@@ -12,6 +12,15 @@ func (c *Client) Health(ctx context.Context) (*Health, error) {
 	return &out, err
 }
 
+// AuthStatus calls GET /api/auth/status with the configured token.
+func (c *Client) AuthStatus(ctx context.Context) (*AuthStatus, error) {
+	var out AuthStatus
+	if _, err := c.do(ctx, http.MethodGet, "/auth/status", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // --- Topologies ---
 
 // ListTopologies calls GET /api/topologies.

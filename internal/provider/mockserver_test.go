@@ -23,6 +23,7 @@ type mockServer struct {
 	// viewerToken authenticates but lacks admin:manage.
 	viewerToken string
 	seq         int
+	webhookGen  int
 	clock       int64
 
 	topologies  map[string]map[string]any
@@ -104,6 +105,18 @@ func (m *mockServer) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	auth := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if p == "/auth/status" {
+		role, perms := "anonymous", []string{}
+		switch auth {
+		case m.token:
+			role, perms = "admin", []string{"workspace:read", "workspace:write", "admin:manage"}
+		case m.viewerToken:
+			role, perms = "viewer", []string{"workspace:read"}
+		}
+		writeJSON(w, 200, map[string]any{"setupComplete": true, "authenticated": role != "anonymous",
+			"subject": "api-token:x", "role": role, "authMethod": "bearer", "permissions": perms, "publicDemo": false})
+		return
+	}
 	admin := strings.HasPrefix(p, "/datasources") || strings.HasPrefix(p, "/credentials") ||
 		(strings.HasPrefix(p, "/topologies/") && strings.Contains(p, "/sources"))
 	switch {
@@ -150,8 +163,9 @@ func (m *mockServer) handle(w http.ResponseWriter, r *http.Request) {
 				}}},
 			map[string]any{"type": "grafana", "displayName": "Grafana", "capabilities": []string{"alerts"},
 				"configSchema": map[string]any{"type": "object", "properties": map[string]any{
-					"url":        map[string]any{"type": "string"},
-					"useWebhook": map[string]any{"type": "boolean"},
+					"url":           map[string]any{"type": "string"},
+					"useWebhook":    map[string]any{"type": "boolean"},
+					"webhookSecret": map[string]any{"type": "string", "secret": true},
 				}}},
 		})
 	case seg[0] == "datasources":
@@ -227,7 +241,8 @@ func (m *mockServer) handleDataSources(w http.ResponseWriter, r *http.Request, s
 			return "", false
 		}
 		if typ == "grafana" && c["useWebhook"] == true && c["webhookSecret"] == nil {
-			c["webhookSecret"] = "generated-webhook-secret"
+			m.webhookGen++
+			c["webhookSecret"] = fmt.Sprintf("generated-webhook-secret-%d", m.webhookGen)
 		}
 		b, _ := json.Marshal(c)
 		return string(b), true
@@ -338,7 +353,11 @@ func (m *mockServer) handleSources(w http.ResponseWriter, r *http.Request, seg [
 				"createdAt": now, "updatedAt": now}
 			m.applySourceUpdate(obj, body)
 			m.sources[obj["id"].(string)] = obj
-			writeJSON(w, 201, obj)
+			// Like the real server, the POST response omits optionsJson and webhookSecret.
+			echo := clone(obj)
+			delete(echo, "optionsJson")
+			delete(echo, "webhookSecret")
+			writeJSON(w, 201, echo)
 		}
 		return
 	}

@@ -254,3 +254,24 @@ type UpdateDashboardRequest struct {
 	Name       *string `json:"name,omitempty"`
 	LayoutJSON *string `json:"layoutJson,omitempty"`
 }
+
+// AuthStatus is GET /api/auth/status: who the request authenticates as.
+// The endpoint is public; an invalid token yields Authenticated=false, not a 401.
+type AuthStatus struct {
+	SetupComplete bool     `json:"setupComplete"`
+	Authenticated bool     `json:"authenticated"`
+	Subject       string   `json:"subject"`
+	Role          string   `json:"role"`
+	AuthMethod    string   `json:"authMethod"`
+	Permissions   []string `json:"permissions"`
+}
+
+// HasPermission reports whether the principal holds a permission such as admin:manage.
+func (s *AuthStatus) HasPermission(p string) bool {
+	for _, v := range s.Permissions {
+		if v == p {
+			return true
+		}
+	}
+	return false
+}
